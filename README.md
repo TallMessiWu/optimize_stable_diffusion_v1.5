@@ -84,7 +84,7 @@ https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main
 ### 3.2 单卡功能测试
 设置权重路径
 ```shell
-model_base = './stable-diffusion-v1-5'
+model_base='./stable-diffusion-v1-5'
 ```
 执行命令：
 ```shell
