@@ -970,16 +970,16 @@ class AttnProcessor2_0:
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # hidden_states = torch_npu.npu_fusion_attention(
-        #     query, key, value, 
-        #     atten_mask=attention_mask, 
-        #     input_layout='BNSD',
-        #     scale=1,
-        #     head_num=attn.heads,
-        # )[0]
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+        hidden_states = torch_npu.npu_fusion_attention(
+            query, key, value, 
+            atten_mask=attention_mask, 
+            input_layout='BNSD',
+            scale=attn.heads**-0.5,
+            head_num=attn.heads,
+        )[0]
+        # hidden_states = F.scaled_dot_product_attention(
+        #     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        # )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
