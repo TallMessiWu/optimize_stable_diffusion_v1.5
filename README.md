@@ -65,7 +65,7 @@ pip install torch_npu-{pytorchversion}.xxxx.{arch}.whl
 
 ### 2.1 下载到本地
 ```shell
-git clone https://gitee.com/ascend/ModelZoo-PyTorch.git
+git clone https://modelers.cn/MindIE/stable_diffusion_v1.5.git
 ```
 
 ### 2.2 环境依赖安装
