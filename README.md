@@ -94,7 +94,7 @@ model_base='./stable-diffusion-v1-5'
 python3 inference_stablediffusion.py \
         --model ${model_base} \
         --prompt_file ./prompts/prompts.txt \
-        --steps 100 \
+        --steps 50 \
         --save_dir ./results \
         --device 0
 ```
