@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument(
         "--steps",
         type=int,
-        default=100,
+        default=50,
         help="The number of denoising steps.",
     )
     parser.add_argument(
@@ -71,7 +71,7 @@ def main():
                 begin = time.time()
                 image = pipe(
                     prompt=prompt,
-                    negative_prompt = args.negative_prompt,
+                    negative_prompt=args.negative_prompt,
                     num_inference_steps=args.steps,
                 ).images[0]
                 npu_stream.synchronize()
