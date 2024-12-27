@@ -81,7 +81,10 @@ stable-diffusion-v1.5权重链接:
 https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main
 ```
 
-### 3.2 单卡功能测试
+### 3.2 修改配置文件
+将model_index.json中所有的`diffusers`字段修改为`stablediffusion`
+
+### 3.3 单卡功能测试
 设置权重路径
 ```shell
 model_base='./stable-diffusion-v1-5'
@@ -103,7 +106,7 @@ python3 inference_stablediffusion.py \
 - --device：推理设备ID。
 
 
-### 3.2 模型推理性能
+### 3.4 模型推理性能
 
 性能参考下列数据。
 
