@@ -73,10 +73,10 @@ git clone https://gitee.com/ascend/ModelZoo-PyTorch.git
 pip3 install -r requirements.txt
 ```
 
-## 三、Stable-Audio-Open-1.0 使用
+## 三、Stable-Diffusion-v1.5 使用
 
 ### 3.1 权重及配置文件说明
-stable-audio-open-1.0权重链接:
+stable-diffusion-v1.5权重链接:
 ```shell
 https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main
 ```
