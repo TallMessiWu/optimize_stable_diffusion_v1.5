@@ -69,7 +69,11 @@ def main():
             with torch.no_grad():
                 npu_stream.synchronize()
                 begin = time.time()
-                image = pipe(prompt).images[0]
+                image = pipe(
+                    prompt=prompt,
+                    negative_prompt = args.negative_prompt,
+                    num_inference_steps=args.steps,
+                ).images[0]
                 npu_stream.synchronize()
                 end = time.time()
                 if i > skip - 1:
