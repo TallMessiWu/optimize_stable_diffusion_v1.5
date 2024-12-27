@@ -974,7 +974,7 @@ class AttnProcessor2_0:
             query, key, value, 
             atten_mask=attention_mask, 
             input_layout='BNSD',
-            scale=attn.heads**-0.5,
+            scale=attn.dim_head**-0.5,
             head_num=attn.heads,
         )[0]
         # hidden_states = F.scaled_dot_product_attention(
