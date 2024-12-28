@@ -113,4 +113,4 @@ python3 inference_stablediffusion.py \
 
 | 硬件形态 | 迭代次数 | 平均耗时|
 | :------: |:----:|:----:|
-| Atlas 800I A2 (32G) |  50  |  2.658s  |
+| Atlas 800I A2 (32G) |  50  |  2.821s  |
