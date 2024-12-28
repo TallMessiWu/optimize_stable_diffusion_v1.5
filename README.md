@@ -76,9 +76,10 @@ pip3 install -r requirements.txt
 ## 三、Stable-Diffusion-v1.5 使用
 
 ### 3.1 权重及配置文件说明
-stable-diffusion-v1.5权重链接:
+下载权重和配置文件
 ```shell
-https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main
+# stable-diffusion-v1.5:
+git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 ### 3.2 修改配置文件
