@@ -15,7 +15,7 @@ language:
 
   | 配套  | 版本 | 环境准备指导 |
   | ----- | ----- |-----|
-  | Python | 3.10.2 | - |
+  | Python | 3.10 / 3.11 | - |
   | torch | 2.1.0 | - |
 
 ### 1.1 获取CANN&MindIE安装包&环境准备
@@ -99,40 +99,129 @@ git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ### 3.2 修改配置文件
 将model_index.json中所有的`diffusers`字段修改为`stablediffusion`
 
-### 3.3 单卡功能测试
+### 3.3 单卡性能测试
 设置权重路径
 ```shell
 model_base='./stable-diffusion-v1-5'
 ```
 执行命令：
 ```shell
+export ENABLE_CACHE=1
 python3 inference_stablediffusion.py \
         --model ${model_base} \
         --prompt_file ./prompts/prompts.txt \
         --steps 50 \
+        --batch_size 1 \
         --save_dir ./results \
         --device 0
 ```
 参数说明：
+- --ENABLE_CACHE：设置为1使能cache优化；设置为0不使能cache优化
 - --model：模型权重路径。
 - --prompt_file：提示词文件。
 - --steps: 图片生成迭代次数。
+- --batch_size：模型batch size。
 - --save_dir：生成图片的存放目录。
 - --device：推理设备ID。
 
+### 3.4 双卡功能测试
+设置权重路径
+```shell
+model_base='./stable-diffusion-v1-5'
+```
+执行命令：
+```shell
+export ENABLE_CACHE=1
+torchrun --nproc_per_node 2 inference_stablediffusion.py \
+        --model ${model_base} \
+        --prompt_file ./prompts/prompts.txt \
+        --steps 50 \
+        --batch_size 1 \
+        --save_dir ./results \
+        --enable_dp
+```
+增加的参数说明：
+- --ENABLE_CACHE：设置为1使能cache优化；设置为0不使能cache优化
+- --nproc_per_node：推理设备个数，使能dp并行只支持两个npu。
+- --master_addr：master节点的IP。
+- --master_port：master节点的端口号。
+- --enable_dp：使能dp并行。
 
-### 3.4 模型推理性能
+### 3.5 模型推理性能
 
 性能参考下列数据。
 
 | 硬件形态 | 迭代次数 | 平均耗时|
-| :------: |:----:|:----:|
-| Atlas 800I A2(8*32G) |  50  |  2.821s  |
+| :------: |:----:|:----:|:----:|
+| Atlas 800I A2(8*32G) |  50  |  2.821s |
+
+### 3.6 模型精度验证
+   本章节将使用Parti数据集对Stable-Diffusion-v1.5进行精度验证。
+   由于生成的图片存在随机性，所以精度验证将使用CLIP-score来评估图片和输入文本的相关性，分数的取值范围为[-1, 1]，越高越好。
+
+   注意，由于要生成的图片数量较多，进行完整的精度验证需要耗费很长的时间。
+
+   1. 下载Parti数据集
+
+      ```bash
+      wget https://raw.githubusercontent.com/google-research/parti/main/PartiPrompts.tsv --no-check-certificate
+      ```
+
+   2. 下载Clip模型权重
+
+      ```bash
+      # 安装git-lfs
+      apt install git-lfs
+      git lfs install
+      git clone https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K
+
+      # 或者访问https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K/blob/main/open_clip_pytorch_model.bin，将权重下载并放到这个目录下
+      ```
+
+   3. 使用推理脚本读取Parti数据集，生成图片
+      ```bash
+      export ENABLE_CACHE=1
+      python inference_stablediffusion_parti.py \
+             --model ${model_base} \
+             --prompt_file ./PartiPrompts.tsv \
+             --num_images_per_prompt 4 \
+             --steps 50 \
+             --batch_size 1 \
+             --save_dir ./results \
+             --device 0
+      ```
+      增加的参数说明：
+      - --num_images_per_prompt: 每个prompt生成的图片数量。
+
+      执行完成后会在`./results`目录下生成推理图片。
+
+   4. 计算CLIP-score
+      设置CLIP权重路径
+      ```bash
+      clip_model_base='./open_clip_pytorch_model.bin'
+      ```
+      ```bash
+      ASCEND_RT_VISIBLE_DEVICES=0 python clip_score_parti.py \
+             --device="npu" \
+             --model_name="ViT-H-14" \
+             --model_weights_path=${clip_model_base} \
+             --prompt_file="./PartiPrompts.tsv" \
+             --image_prefix="./results"
+      ```
+
+      参数说明：
+      - --device: 推理设备。
+      - --model_name: Clip模型名称。
+      - --model_weights_path: Clip模型权重文件路径。
+      - --prompt_file: 提示词文件。
+      - --image_prefix: 生成图片的存放路径。
+
+      执行完成后会在屏幕打印出精度计算结果。 
 
 ## 优化指南
 本模型使用的优化手段如下：
 - 等价优化：FA、DP并行
-- 算法优化：UnetCache
+- 有损优化：cache
 
 ## 声明
 - 本代码仓提到的数据集和模型仅作为示例，这些数据集和模型仅供您用于非商业目的，如您使用这些数据集和模型来完成示例，请您特别注意应遵守对应数据集和模型的License，如您因使用数据集或模型而产生侵权纠纷，华为不承担任何责任。

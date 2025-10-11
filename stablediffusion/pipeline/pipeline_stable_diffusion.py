@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from packaging import version
+import torch.distributed
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.configuration_utils import FrozenDict
@@ -247,6 +249,42 @@ class StableDiffusionPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+        #TODO Unet Cache/Attention Cache
+        self.enable_cache = int(os.environ.get("ENABLE_CACHE", "0"))
+        self.cache_type = int(os.environ.get("CACHE_LEVEL", "1"))
+
+        if self.enable_cache:
+            if self.cache_type in [1, 2, 3, 4]:
+                self.set_unet_cache()
+            elif self.cache_type == 5:
+                self.set_attention_cache()
+            else:
+                self.enable_cache = 0
+
+    def set_unet_cache(self, cache_steps=None, steps=50):
+        self.unet.enable_unet_cache = True
+        if cache_steps is None:
+            if self.cache_type == 1:
+                cache_steps = "1,2,3,4,5,7,9,10,12,13,14,16,18,19,21,23,24,26,27,29,30,31,33,34,36,37,39,40,41,43,44,45,47,48,49"
+            elif self.cache_type == 2:
+                cache_steps = "1,2,3,4,5,7,9,10,12,13,14,16,18,19,21,23,24,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
+            elif self.cache_type == 3:
+                cache_steps = "1,2,3,4,5,7,9,10,12,13,14,16,17,18,19,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
+            elif self.cache_type == 4:
+                cache_steps = "1,2,3,4,5,6,7,9,10,12,13,14,16,17,18,19,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
+
+        skip_steps = [False] * steps
+        for i in cache_steps.split(','):
+            if int(i) >= steps:
+                continue
+            skip_steps[int(i)] = True
+        self.skip_steps = skip_steps
+
+    def set_attention_cache(self):
+        if hasattr(self.unet, "set_agb_cache"):
+            self.unet.set_agb_cache()
+        else:
+            self.enable_cache = 0
 
     def enable_vae_slicing(self):
         r"""
@@ -825,6 +863,7 @@ class StableDiffusionPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        parallel_cfg=None,
         **kwargs,
     ):
         r"""
@@ -975,6 +1014,8 @@ class StableDiffusionPipeline(
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            if parallel_cfg is not None and parallel_cfg.enable_dp:
+                prompt_embeds = torch.chunk(prompt_embeds, parallel_cfg.world_size, dim=0)[parallel_cfg.rank]
 
         if ip_adapter_image is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
@@ -1012,30 +1053,70 @@ class StableDiffusionPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         # 7. Denoising loop
+        cache = None
+        cache_faster = None
+        skip_flag = True
+        cache_flag = False
+        cache_faster_flag = True
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+                if self.enable_cache and self.cache_type in [1, 2, 3, 4]  and (i+1) <= len(self.skip_steps):
+                    skip_step = self.skip_steps[i]
+                else:
+                    skip_step = False
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                if self.do_classifier_free_guidance:
+                    if parallel_cfg is not None and parallel_cfg.enable_dp:
+                        latent_model_input = latents
+                    else:
+                        latent_model_input = torch.cat([latents] * 2)
+                else:
+                    latent_model_input = latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep_cond=timestep_cond,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+                if self.enable_cache and skip_step:
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep_cond=timestep_cond,
+                        cross_attention_kwargs=self.cross_attention_kwargs,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=True,
+                        if_skip=skip_flag,
+                        if_faster=cache_faster_flag,
+                        inputCache=cache,
+                        inputFasterCache=cache_faster,
+                    )[0]
+                else:
+                    noise_pred, cache, cache_faster = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep_cond=timestep_cond,
+                        cross_attention_kwargs=self.cross_attention_kwargs,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=True,
+                        if_skip=cache_flag,
+                        if_faster=cache_faster_flag
+                    )
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
+                    if parallel_cfg is not None and parallel_cfg.enable_dp:
+                        b, c, h, w = noise_pred.shape
+                        noise_pred_full = torch.empty(
+                            [parallel_cfg.world_size, b, c, h, w], dtype=noise_pred.dtype, device=noise_pred.device
+                        )
+                        torch.distributed.all_gather_into_tensor(noise_pred_full, noise_pred)
+                        noise_pred = noise_pred_full.reshape(-1, c, h, w)
+                        
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 

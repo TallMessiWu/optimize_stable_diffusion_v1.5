@@ -13,6 +13,7 @@
 # limitations under the License.
 from importlib import import_module
 from typing import Callable, Optional, Union
+import os
 
 import torch
 import torch_npu
@@ -28,9 +29,21 @@ from diffusers.models.attention_processor import (
     CustomDiffusionAttnProcessor, XFormersAttnAddedKVProcessor, XFormersAttnProcessor,
 )
 from diffusers.models.lora import LoRACompatibleLinear, LoRALinearLayer
+from mindiesd import attention_forward
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+def get_npu_device():
+    # 默认获取当前设备信息
+    device_name = torch_npu.npu.get_device_name()
+    if "3" in device_name:
+        return "DUO"
+    elif "9" in device_name:
+        return "A2"
+    else:
+        return ""
+
+soc = get_npu_device()
 
 class Attention(nn.Module):
     r"""
@@ -918,7 +931,24 @@ class AttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+        self.use_todo = False
+        if int(os.environ.get("TOKEN_DOWNSAMPLE", "0")) == 1:
+            self.use_todo = True
+        # BNSD or BSH
+        self.fa_input_layout = "BSH"
 
+        self.use_fatik = False
+        if soc == "DUO":
+            fatik_so_path = os.environ.get("FATIK_FILE_PATH", "")
+            if fatik_so_path:
+                try: 
+                    torch.ops.load_library(fatik_so_path)
+                    self.use_fatik = True
+                    self.fa_input_layout = "BNSD"
+                except Exception as e:
+                    logger.info(f"Failed to load fatik so file: {fatik_so_path}")
+                    logger.info(e)
+                    self.use_fatik = False
     def __call__(
         self,
         attn: Attention,
@@ -965,23 +995,66 @@ class AttnProcessor2_0:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        #TODO 序列压缩
+        if self.use_todo:
+            q_seqlen = query.shape[-2]
+            kv_seqlen = key.shape[-2]
+            if q_seqlen == kv_seqlen and q_seqlen == 4096:
+                key, value = map(
+                    lambda t: t.permute(0, 2, 1)
+                    .reshape(batch_size, -1, 64, 64)
+                    .contiguous(),
+                    (key, value))
+                key = torch.nn.functional.interpolate(key, (48, 48), mode='nearest') 
+                value = torch.nn.functional.interpolate(value, (48, 48), mode='nearest') 
+                key, value = map(
+                    lambda t: t.reshape(batch_size, -1, 2304)
+                    .permute(0, 2, 1)
+                    .contiguous(),
+                    (key, value))
 
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        if self.fa_input_layout == "BNSD":
+            query, key, value = map(
+                    lambda t: t.view(batch_size, -1, attn.heads, head_dim)
+                    .transpose(1, 2),
+                    (query, key, value))
+            
+        if soc == "A2":
+            hidden_states = torch_npu.npu_fusion_attention(
+                query, key, value, 
+                atten_mask=attention_mask, 
+                input_layout=self.fa_input_layout,
+                scale=head_dim**-0.5,
+                head_num=attn.heads,
+            )[0]
+        else:
+            if self.use_fatik:
+                try:
+                    torch_npu.npu.set_compile_mode(jit_compile=True)
+                    hidden_states = torch.ops.mindie.flash_attention_tik(query, key, value)
+                    torch_npu.npu.set_compile_mode(jit_compile=False)
+                    
+                except Exception as e:
+                    logger.info(f"Failed to use fatik: {e}")
+                    self.use_fatik = False
+                    hidden_states = torch_npu.npu_prompt_flash_attention(
+                        query, key, value, atten_mask=attention_mask,
+                        input_layout=self.fa_input_layout, scale_value=head_dim**-0.5,
+                        pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
 
-        hidden_states = torch_npu.npu_fusion_attention(
-            query, key, value, 
-            atten_mask=attention_mask, 
-            input_layout='BNSD',
-            scale=head_dim**-0.5,
-            head_num=attn.heads,
-        )[0]
+            else:
+                hidden_states = torch_npu.npu_prompt_flash_attention(
+                    query, key, value, atten_mask=attention_mask,
+                    input_layout=self.fa_input_layout, scale_value=head_dim**-0.5,
+                    pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
+
         # hidden_states = F.scaled_dot_product_attention(
         #     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         # )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        if self.fa_input_layout == "BNSD":
+            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
@@ -995,8 +1068,8 @@ class AttnProcessor2_0:
         if attn.residual_connection:
             hidden_states = hidden_states + residual
 
-        hidden_states = hidden_states / attn.rescale_output_factor
-
+        if attn.rescale_output_factor != 1.0:
+            hidden_states = hidden_states / attn.rescale_output_factor
         return hidden_states
 
 

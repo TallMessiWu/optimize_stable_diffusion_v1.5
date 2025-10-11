@@ -1,10 +1,36 @@
-import torch
-import torch_npu
-import time
+# Copyright 2024 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import argparse
+import time
+import logging
+import csv
+import json
+
+from typing import Callable, List, Optional, Union
+import numpy as np
+
+import torch
+import torch_npu
+
 from stablediffusion import StableDiffusionPipeline
-torch.npu.config.allow_internal_format = False
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
+
 
 class PromptLoader:
     def __init__(
@@ -110,25 +136,15 @@ class PromptLoader:
                 catagory_id = self.catagories.index(style)
                 self.prompts.append((prompt, catagory_id))
 
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--prompt_file",
+        "--model",
         type=str,
-        default="./prompts/prompts.txt",
-        help="The prompts file to guide images generation.",
-    )
-    parser.add_argument(
-        "--prompt_file_type",
-        choices=["plain", "parti"],
-        default="plain",
-        help="Type of prompt file.",
-    )
-    parser.add_argument(
-        "--negative_prompt",
-        type=str,
-        default="",
-        help="The prompt or prompts to guide what to not include in image generation.",
+        default="./stable-diffusion-2-1-base",
+        help="The path of stable-diffusion.",
     )
     parser.add_argument(
         "--steps",
@@ -137,89 +153,77 @@ def parse_arguments():
         help="The number of denoising steps.",
     )
     parser.add_argument(
-        "--model",
-        type=str,
-        default="./stable-diffusion-v1.5",
-        help="The path of stable-diffusion.",
-    )
-    parser.add_argument(
         "--device",
         type=int,
         default=0,
         help="NPU device id.",
     )
     parser.add_argument(
-        "-bs",
-        "--batch_size",
+        "--dtype",
+        type=torch.dtype,
+        default=torch.float16
+    )
+    parser.add_argument(
+        "--num_images_per_prompt",
         type=int,
-        default=1,
-        help="Batch size."
+        default=1
     )
     parser.add_argument(
-        "--save_dir",
+        "--prompt_file",
         type=str,
-        default="./results",
-        help="Path to save result audio files.",
+        default="./prompts/prompts.txt",
+        help="A text file of prompts for generating images.",
     )
     parser.add_argument(
-        "--enable_dp",
-        action="store_true",
-        help="Enable dp parallel.",
+        "--prompt_file_type",
+        choices=["plain", "parti", "hpsv2"],
+        default="plain",
+        help="Type of prompt file.",
     )
     return parser.parse_args()
 
 
-def main():
+def test_precision():
     args = parse_arguments()
-    save_dir = args.save_dir
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    
-    prompt_loader = PromptLoader(args.prompt_file,
-                                 args.prompt_file_type,
-                                 args.batch_size)
 
-    if args.enable_dp:
-        from stablediffusion.parallel.parallel_config import ParallelCfg
-        world_size = int(os.environ["WORLD_SIZE"])
-        local_rank_idx = int(os.environ["LOCAL_RANK"])
-        parallel_cfg = ParallelCfg(enable_dp=args.enable_dp, device_id=local_rank_idx, local_rank=local_rank_idx, world_size=world_size)
-    else:
-        parallel_cfg = None
-        torch_npu.npu.set_device(args.device)
-
-    torch.manual_seed(1)
-    npu_stream = torch_npu.npu.Stream()
+    torch.npu.set_device(args.device)
 
     pipe = StableDiffusionPipeline.from_pretrained(args.model, torch_dtype=torch.float16)
-    pipe.to("npu")
+    pipe.to(args.dtype).to("npu")
 
-    use_time = 0
-    infer_num = 0
+    prompt_loader = PromptLoader(
+        args.prompt_file,
+        args.prompt_file_type,
+        batch_size=1,
+        num_images_per_prompt=args.num_images_per_prompt
+    )
     image_info = []
     current_prompt = None
+    infer_num = 0
+
+    current_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    img_dir = f"{current_time}/images"
+    os.makedirs(img_dir)
+
     for i, input_info in enumerate(prompt_loader):
+        print(f"==============={i}=================", input_info)
         prompts = input_info['prompts']
         catagories = input_info['catagories']
         save_names = input_info['save_names']
         n_prompts = input_info['n_prompts']
 
-        print(f"[{infer_num + n_prompts}/{len(prompt_loader)}]: {prompts}")
-        infer_num += args.batch_size
-        with torch.no_grad():
-            npu_stream.synchronize()
-            begin = time.time()
-            images = pipe(
-                prompt=prompts,
-                num_inference_steps=args.steps,
-                parallel_cfg=parallel_cfg,
-            )
-            npu_stream.synchronize()
-            end = time.time()
-            if i > 4:
-                use_time += end - begin
+        logger.info(f"[{infer_num + n_prompts}/{len(prompt_loader)}]: {prompts}")
+
+        infer_num += 1
+
+        images = pipe(
+            prompt=prompts,
+            negative_prompt=[""],
+            num_inference_steps=args.steps,
+        )
+
         for j in range(n_prompts):
-            image_save_path = os.path.join(save_dir, f"{save_names[j]}.png")
+            image_save_path = os.path.join(img_dir, f"{save_names[j]}.png")
             image = images[0][j]
             image.save(image_save_path)
 
@@ -228,10 +232,12 @@ def main():
                 image_info.append({'images': [], 'prompt': current_prompt, 'category': catagories[j]})
 
             image_info[-1]['images'].append(image_save_path)
-    infer_num = infer_num - 5 # do not count the time spent inferring the first 5 images
-    print(f"[info] infer number: {infer_num}; use time: {use_time:.3f}s\n"
-          f"average time: {use_time / infer_num:.3f}s\n")
+    
+    img_json = f"{current_time}/image_info.json"
+    
+    with os.fdopen(os.open(img_json, os.O_RDWR | os.O_CREAT, 0o640), "w") as f:
+        json.dump(image_info, f)
 
 
 if __name__ == "__main__":
-    main()
+    test_precision()

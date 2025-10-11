@@ -26,11 +26,11 @@ from diffusers.models.resnet import (
     FirUpsample2D,
     KDownsample2D,
     KUpsample2D,
-    ResnetBlock2D,
     ResnetBlockCondNorm2D,
     Upsample2D,
 )
 
+from stablediffusion.layers.resnet import ResnetBlock2D
 from stablediffusion.layers.activations import get_activation
 from stablediffusion.layers.attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from stablediffusion.layers.normalization import AdaGroupNorm
@@ -1160,6 +1160,7 @@ class CrossAttnDownBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        block_number: Optional[int]=None,
         additional_residuals: Optional[torch.FloatTensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
@@ -1211,6 +1212,9 @@ class CrossAttnDownBlock2D(nn.Module):
                 hidden_states = hidden_states + additional_residuals
 
             output_states = output_states + (hidden_states,)
+            #TODO unet cache
+            if block_number is not None and len(output_states) == block_number + 1:
+                return hidden_states, output_states
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -2365,6 +2369,7 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        block_number: Optional[int]=None,
     ) -> torch.FloatTensor:
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
@@ -2373,8 +2378,12 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b1", None)
             and getattr(self, "b2", None)
         )
+        prev_feature = []
+        for i, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
+            #TODO unet cache
+            if block_number is not None and i < len(self.resnets) - block_number - 1:
+                continue
 
-        for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -2390,6 +2399,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     b1=self.b1,
                     b2=self.b2,
                 )
+            prev_feature.append(hidden_states)
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -2434,8 +2444,7 @@ class CrossAttnUpBlock2D(nn.Module):
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
 
-        return hidden_states
-
+        return hidden_states, prev_feature
 
 class UpBlock2D(nn.Module):
     def __init__(
