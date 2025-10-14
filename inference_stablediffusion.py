@@ -4,7 +4,9 @@ import time
 import os
 import argparse
 from stablediffusion import StableDiffusionPipeline
+from torch_npu.contrib import transfer_to_npu
 torch.npu.config.allow_internal_format = False
+torch_npu.npu.set_compile_mode(jit_compile=False)
 
 class PromptLoader:
     def __init__(
