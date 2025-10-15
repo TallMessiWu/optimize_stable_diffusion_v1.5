@@ -99,13 +99,22 @@ git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ### 3.2 修改配置文件
 将model_index.json中所有的`diffusers`字段修改为`stablediffusion`
 
-### 3.3 单卡性能测试
+### 3.3 执行算子编译脚本
+300I Duo机器一定要执行该步骤，800I A2机器不需要执行
+```shell
+cd pta_plugin
+bash build.sh
+```
+
+### 3.4 性能测试
 设置权重路径
 ```shell
 model_base='./stable-diffusion-v1-5'
 ```
 执行命令：
 ```shell
+# 800I A2，单卡推理
+export TOKEN_DOWNSAMPLE=1
 export ENABLE_CACHE=1
 python3 inference_stablediffusion.py \
         --model ${model_base} \
@@ -114,37 +123,27 @@ python3 inference_stablediffusion.py \
         --batch_size 1 \
         --save_dir ./results \
         --device 0
+# 300I Duo，使能单卡双芯
+export FATIK_FILE_PATH=./pta_plugin/build/libPTAExtensionOPS.so
+export ENABLE_CACHE=1
+export TOKEN_DOWNSAMPLE=1
+torchrun --nproc_per_node 2 inference_stablediffusion.py \
+        --model ${model_base} \
+        --prompt_file ./prompts/prompts.txt \
+        --steps 50 \
+        --save_dir ./results_dp \
+        --enable_dp
 ```
 参数说明：
+- --TOKEN_DOWNSAMPLE：设置为1使能序列压缩优化；设置为0不使能
 - --ENABLE_CACHE：设置为1使能cache优化；设置为0不使能cache优化
+- --FATIK_FILE_PATH：300I Duo机器需要设置；800I A2机器不用设置
 - --model：模型权重路径。
 - --prompt_file：提示词文件。
 - --steps: 图片生成迭代次数。
 - --batch_size：模型batch size。
 - --save_dir：生成图片的存放目录。
 - --device：推理设备ID。
-
-### 3.4 双卡功能测试
-设置权重路径
-```shell
-model_base='./stable-diffusion-v1-5'
-```
-执行命令：
-```shell
-export ENABLE_CACHE=1
-torchrun --nproc_per_node 2 inference_stablediffusion.py \
-        --model ${model_base} \
-        --prompt_file ./prompts/prompts.txt \
-        --steps 50 \
-        --batch_size 1 \
-        --save_dir ./results \
-        --enable_dp
-```
-增加的参数说明：
-- --ENABLE_CACHE：设置为1使能cache优化；设置为0不使能cache优化
-- --nproc_per_node：推理设备个数，使能dp并行只支持两个npu。
-- --master_addr：master节点的IP。
-- --master_port：master节点的端口号。
 - --enable_dp：使能dp并行。
 
 ### 3.5 模型推理性能
