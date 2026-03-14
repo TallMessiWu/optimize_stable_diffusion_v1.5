@@ -169,8 +169,14 @@ def parse_arguments():
         help="Enable dp parallel.",
     )
     parser.add_argument(
+        "--use_lora",
+        action="store_true",
+        help="Enable dp parallel.",
+    )
+    parser.add_argument(
         "--lora_path",
         type=str,
+        default="./lora",
         help="The path of lora model weights.",
     )
     return parser.parse_args()
@@ -199,8 +205,8 @@ def main():
     npu_stream = torch_npu.npu.Stream()
 
     pipe = StableDiffusionPipeline.from_pretrained(args.model, torch_dtype=torch.float16)
-    if use_lora:
-        pipe.load_lora_weights(lora_path)
+    if args.use_lora:
+        pipe.load_lora_weights(args.lora_path)
         pipe.fuse_lora()
     pipe.to("npu")
 
