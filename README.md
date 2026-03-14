@@ -171,7 +171,7 @@ python3 inference_stablediffusion.py \
 - --use_lora：开启lora热切换
 - --lora_path：Lora模型权重路径
 
-### 3.5 模型推理性能
+### 3.6 模型推理性能
 
 性能参考下列数据。
 
@@ -179,7 +179,7 @@ python3 inference_stablediffusion.py \
 | :------: |:----:|:----:|:----:|
 | Atlas 800I A2(8*32G) |  50  |  2.821s |
 
-### 3.6 模型精度验证
+### 3.7 模型精度验证
    本章节将使用Parti数据集对Stable-Diffusion-v1.5进行精度验证。
    由于生成的图片存在随机性，所以精度验证将使用CLIP-score来评估图片和输入文本的相关性，分数的取值范围为[-1, 1]，越高越好。
 
