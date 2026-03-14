@@ -146,6 +146,31 @@ torchrun --nproc_per_node 2 inference_stablediffusion.py \
 - --device：推理设备ID。
 - --enable_dp：使能dp并行。
 
+### 3.5 lora热切换
+下载lora模型的权重，设置权重路径
+```shell
+model_base='./stable-diffusion-v1-5'
+lora_base='./pytorch_lora_weights.safetensors'
+```
+执行命令
+```shell
+# 800I A2，单卡推理
+export TOKEN_DOWNSAMPLE=1
+export ENABLE_CACHE=1
+python3 inference_stablediffusion.py \
+        --model ${model_base} \
+        --prompt_file ./prompts/prompts.txt \
+        --steps 50 \
+        --batch_size 1 \
+        --save_dir ./results \
+        --device 0 \
+        --use_lora \
+        --lora_path ${lora_base}
+```
+参数说明：
+- --use_lora：开启lora热切换
+- --lora_path：Lora模型权重路径
+
 ### 3.5 模型推理性能
 
 性能参考下列数据。
