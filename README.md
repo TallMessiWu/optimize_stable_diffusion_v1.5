@@ -13,10 +13,10 @@ language:
 
   **表 1**  版本配套表
 
-  | 配套  | 版本 | 环境准备指导 |
-  | ----- | ----- |-----|
+  | 配套  | 版本          | 环境准备指导 |
+  | ----- |-------------|-----|
   | Python | 3.10 / 3.11 | - |
-  | torch | 2.1.0 | - |
+  | torch | 2.6.0       | - |
 
 ### 1.1 获取CANN&MindIE安装包&环境准备
 - 设备支持
@@ -61,7 +61,7 @@ cd ${AieInstallPath}/mindie && source set_env.sh
 ```
 
 ### 1.4 Torch_npu安装
-安装pytorch框架 版本2.1.0
+安装pytorch框架 版本2.6.0
 [安装包下载](https://download.pytorch.org/whl/cpu/torch/)
 
 使用pip安装
