@@ -4,7 +4,7 @@ import time
 import os
 import argparse
 from stablediffusion import StableDiffusionPipeline
-from torch_npu.contrib import transfer_to_npu
+from stablediffusion.layers.attention_processor import soc
 torch.npu.config.allow_internal_format = False
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
@@ -179,7 +179,26 @@ def parse_arguments():
         default="./lora",
         help="The path of lora model weights.",
     )
+    parser.add_argument(
+        "--use_compile",
+        action="store_true",
+        help="Enable compile.",
+    )
     return parser.parse_args()
+
+
+def _weight_format_cast(model: torch.nn.Module):
+    for _, module in model.named_modules():
+        if isinstance(module , torch.nn.Conv2d):
+            module.weight.data = torch_npu.npu_format_cast(module.weight.data.contiguous(), 4)  # ACL_FORMAT_FRACTAL_Z
+        elif isinstance(module, torch.nn.Linear):
+            module.weight.data = torch_npu.npu_format_cast(module.weight.data.contiguous(), 29)  # ACL_FORMAT_FRACTAL_NZ
+        else:
+            for _, submodule in module.named_children():
+                if isinstance(submodule, torch.nn.Conv2d):
+                    submodule.weight.data = torch_npu.npu_format_cast(submodule.weight.data.contiguous(), 4)  # ACL_FORMAT_FRACTAL_Z
+                elif isinstance(submodule, torch.nn.Linear):
+                    submodule.weight.data = torch_npu.npu_format_cast(submodule.weight.data.contiguous(), 29)  # ACL_FORMAT_FRACTAL_NZ
 
 
 def main():
@@ -209,6 +228,19 @@ def main():
         pipe.load_lora_weights(args.lora_path)
         pipe.fuse_lora()
     pipe.to("npu")
+
+    if args.use_compile:
+        config = torchair.CompilerConfig()
+        # config.mode = "reduce-overhead"
+        npu_backend = torchair.get_npu_backend(compiler_config=config)
+        pipe.unet = torch.compile(pipe.unet, backend=npu_backend)
+        pipe.text_encoder = torch.compile(pipe.text_encoder, backend=npu_backend)
+        pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend=npu_backend)
+
+    if soc == "DUO":
+        model_list = [pipe.unet, pipe.text_encoder, pipe.vae.decoder]
+        for model in model_list:
+            _weight_format_cast(model)
 
     use_time = 0
     infer_num = 0
