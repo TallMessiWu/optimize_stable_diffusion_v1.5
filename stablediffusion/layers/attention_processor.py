@@ -1030,9 +1030,12 @@ class AttnProcessor2_0:
         else:
             if self.use_fatik:
                 try:
-                    torch_npu.npu.set_compile_mode(jit_compile=True)
-                    hidden_states = torch.ops.mindie.flash_attention_tik(query, key, value)
-                    torch_npu.npu.set_compile_mode(jit_compile=False)
+                    option = {"jitCompile": "enable"}
+                    torch_npu._C._npu_setOption(option)
+                    query = query * (head_dim**-0.5)
+                    hidden_states = torch.ops.mindiefatik.flash_attention_tik(query, key, value)
+                    option = {"jitCompile": "disable"}
+                    torch_npu._C._npu_setOption(option)
                     
                 except Exception as e:
                     logger.info(f"Failed to use fatik: {e}")
