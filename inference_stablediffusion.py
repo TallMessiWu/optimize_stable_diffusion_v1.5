@@ -9,6 +9,10 @@ from stablediffusion.layers.attention_processor import soc
 torch.npu.config.allow_internal_format = False
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
+if soc == "DUO":
+    torch.npu.config.allow_internal_format = True
+
+
 class PromptLoader:
     def __init__(
             self,

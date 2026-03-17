@@ -29,6 +29,8 @@ from stablediffusion import StableDiffusionPipeline
 torch.npu.config.allow_internal_format = False
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
+if soc == "DUO":
+    torch.npu.config.allow_internal_format = True
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
