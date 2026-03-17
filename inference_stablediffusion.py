@@ -3,6 +3,7 @@ import torch_npu
 import time
 import os
 import argparse
+import torchair
 from stablediffusion import StableDiffusionPipeline
 from stablediffusion.layers.attention_processor import soc
 torch.npu.config.allow_internal_format = False
