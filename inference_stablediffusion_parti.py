@@ -9,7 +9,7 @@ import torch_npu
 
 from stablediffusion import StableDiffusionPipeline
 torch.npu.config.allow_internal_format = False
-torch_npu.npu.set_compile_mode(jit_compile=True)
+torch_npu.npu.set_compile_mode(jit_compile=False)
 
 
 def parse_arguments():
