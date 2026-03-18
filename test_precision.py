@@ -26,6 +26,7 @@ import torch
 import torch_npu
 
 from stablediffusion import StableDiffusionPipeline
+from stablediffusion.layers.attention_processor import soc
 torch.npu.config.allow_internal_format = False
 torch_npu.npu.set_compile_mode(jit_compile=False)
 
