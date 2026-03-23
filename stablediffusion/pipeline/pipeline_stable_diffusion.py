@@ -40,7 +40,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
+from stablediffusion.layers.attention_processor import soc
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -271,7 +271,8 @@ class StableDiffusionPipeline(
             elif self.cache_type == 3:
                 cache_steps = "1,2,3,4,5,7,9,10,12,13,14,16,17,18,19,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
             elif self.cache_type == 4:
-                cache_steps = "1,2,3,4,5,6,7,9,10,12,13,14,16,17,18,19,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
+                # cache_steps = "1,2,3,4,5,6,7,9,10,12,13,14,16,17,18,19,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
+                cache_steps = "1,2,3,4,5,6,7,9,10,11,12,13,14,16,17,18,19,20,21,23,24,25,26,27,29,30,31,33,34,35,36,37,39,40,41,43,44,45,46,47,48,49"
 
         skip_steps = [False] * steps
         for i in cache_steps.split(','):
@@ -1052,6 +1053,16 @@ class StableDiffusionPipeline(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
+        precomputed_timestep_emb = timesteps
+        if soc == "DUO":
+            precomputed_timestep_emb = self.unet.prepare_timestep_embeddings(
+                timesteps=timesteps,
+                batch_size=batch_size * num_images_per_prompt,
+                sample_dtype=prompt_embeds.dtype,
+                sample_device=device,
+                timestep_cond=timestep_cond,
+            )
+
         # 7. Denoising loop
         cache = None
         cache_faster = None
@@ -1061,13 +1072,14 @@ class StableDiffusionPipeline(
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
+            for i, (t, emb) in enumerate(zip(timesteps, precomputed_timestep_emb)):
                 if self.interrupt:
                     continue
-                if self.enable_cache and self.cache_type in [1, 2, 3, 4]  and (i+1) <= len(self.skip_steps):
+                skip_step = False
+                if self.enable_cache and self.cache_type in [1, 2, 3, 4] and (i + 1) <= len(self.skip_steps):
                     skip_step = self.skip_steps[i]
-                else:
-                    skip_step = False
+                # else:
+                #     skip_step = False
 
                 # expand the latents if we are doing classifier free guidance
                 if self.do_classifier_free_guidance:
@@ -1083,7 +1095,7 @@ class StableDiffusionPipeline(
                 if self.enable_cache and skip_step:
                     noise_pred = self.unet(
                         latent_model_input,
-                        t,
+                        emb,
                         encoder_hidden_states=prompt_embeds,
                         timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,
@@ -1097,7 +1109,7 @@ class StableDiffusionPipeline(
                 else:
                     noise_pred, cache, cache_faster = self.unet(
                         latent_model_input,
-                        t,
+                        emb,
                         encoder_hidden_states=prompt_embeds,
                         timestep_cond=timestep_cond,
                         cross_attention_kwargs=self.cross_attention_kwargs,

@@ -13,7 +13,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
-import os 
+import os
 
 import torch
 import torch.nn as nn
@@ -30,6 +30,7 @@ from stablediffusion.layers.attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    soc
 )
 from stablediffusion.layers.embeddings import (
     GaussianFourierProjection,
@@ -51,7 +52,6 @@ from .unet_2d_blocks import (
     get_up_block,
 )
 from stablediffusion.models.model_utils import ModelMixin
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -167,60 +167,61 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
     @register_to_config
     def __init__(
-        self,
-        sample_size: Optional[int] = None,
-        in_channels: int = 4,
-        out_channels: int = 4,
-        center_input_sample: bool = False,
-        flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: Union[int, Tuple[int]] = 2,
-        downsample_padding: int = 1,
-        mid_block_scale_factor: float = 1,
-        dropout: float = 0.0,
-        act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
-        norm_eps: float = 1e-5,
-        cross_attention_dim: Union[int, Tuple[int]] = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
-        upcast_attention: bool = False,
-        resnet_time_scale_shift: str = "default",
-        resnet_skip_time_act: bool = False,
-        resnet_out_scale_factor: int = 1.0,
-        time_embedding_type: str = "positional",
-        time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
-        time_cond_proj_dim: Optional[int] = None,
-        conv_in_kernel: int = 3,
-        conv_out_kernel: int = 3,
-        projection_class_embeddings_input_dim: Optional[int] = None,
-        attention_type: str = "default",
-        class_embeddings_concat: bool = False,
-        mid_block_only_cross_attention: Optional[bool] = None,
-        cross_attention_norm: Optional[str] = None,
-        addition_embed_type_num_heads=64,
+            self,
+            sample_size: Optional[int] = None,
+            in_channels: int = 4,
+            out_channels: int = 4,
+            center_input_sample: bool = False,
+            flip_sin_to_cos: bool = True,
+            freq_shift: int = 0,
+            down_block_types: Tuple[str] = (
+                    "CrossAttnDownBlock2D",
+                    "CrossAttnDownBlock2D",
+                    "CrossAttnDownBlock2D",
+                    "DownBlock2D",
+            ),
+            mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
+            up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",
+                                          "CrossAttnUpBlock2D"),
+            only_cross_attention: Union[bool, Tuple[bool]] = False,
+            block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+            layers_per_block: Union[int, Tuple[int]] = 2,
+            downsample_padding: int = 1,
+            mid_block_scale_factor: float = 1,
+            dropout: float = 0.0,
+            act_fn: str = "silu",
+            norm_num_groups: Optional[int] = 32,
+            norm_eps: float = 1e-5,
+            cross_attention_dim: Union[int, Tuple[int]] = 1280,
+            transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
+            reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
+            encoder_hid_dim: Optional[int] = None,
+            encoder_hid_dim_type: Optional[str] = None,
+            attention_head_dim: Union[int, Tuple[int]] = 8,
+            num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+            dual_cross_attention: bool = False,
+            use_linear_projection: bool = False,
+            class_embed_type: Optional[str] = None,
+            addition_embed_type: Optional[str] = None,
+            addition_time_embed_dim: Optional[int] = None,
+            num_class_embeds: Optional[int] = None,
+            upcast_attention: bool = False,
+            resnet_time_scale_shift: str = "default",
+            resnet_skip_time_act: bool = False,
+            resnet_out_scale_factor: int = 1.0,
+            time_embedding_type: str = "positional",
+            time_embedding_dim: Optional[int] = None,
+            time_embedding_act_fn: Optional[str] = None,
+            timestep_post_act: Optional[str] = None,
+            time_cond_proj_dim: Optional[int] = None,
+            conv_in_kernel: int = 3,
+            conv_out_kernel: int = 3,
+            projection_class_embeddings_input_dim: Optional[int] = None,
+            attention_type: str = "default",
+            class_embeddings_concat: bool = False,
+            mid_block_only_cross_attention: Optional[bool] = None,
+            cross_attention_norm: Optional[str] = None,
+            addition_embed_type_num_heads=64,
     ):
         super().__init__()
 
@@ -619,22 +620,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             self.position_net = GLIGENTextBoundingboxProjection(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
             )
-        # 默认不起用unet cache 
+        # 默认不起用unet cache
         self.enable_unet_cache = False
+
     def set_agb_cache(self):
         # 开启agb cache
         self.cache = None
         self.enable_unet_cache = False
+
         def enable_agb_cache(module):
             for child in module.children():
                 if hasattr(child, "enable_agb"):
                     child.enable_agb = True
                 if len(list(child.children())) > 0:
                     enable_agb_cache(child)
+
         # self.cache_step = [1, 2, 4, 6, 7, 9, 10, 12, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, \
         #     30, 31, 33, 34, 36, 37, 39, 40, 42, 43, 45, 47, 48, 49]
         self.cache_step = [1, 2, 3, 4, 5, 7, 9, 10, 12, 13, 14, 16, 18, 19, 21, 23, 24, 26, \
-            27, 29, 30, 31, 33, 34, 36, 37, 39, 40, 41, 43, 44, 45, 47, 48, 49]
+                           27, 29, 30, 31, 33, 34, 36, 37, 39, 40, 41, 43, 44, 45, 47, 48, 49]
+
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
@@ -856,25 +861,61 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             if hasattr(module, "set_lora_layer"):
                 module.set_lora_layer(None)
 
+    def prepare_timestep_embeddings(
+            self,
+            timesteps: torch.Tensor,
+            batch_size: int,
+            sample_dtype: torch.dtype,
+            sample_device: torch.device,
+            timestep_cond: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Batch process all timestep embeddings before the denoising loop.
+
+        Args:
+            timesteps: Tensor of shape [num_timesteps] containing all timesteps
+            batch_size: Batch size for each inference step
+            sample_dtype: Data type of the sample tensor
+            sample_device: Device of the sample tensor
+            timestep_cond: Optional conditional embeddings for timestep
+
+        Returns:
+            emb_all: Tensor of shape [num_timesteps, batch_size, time_embed_dim]
+        """
+        num_timesteps = len(timesteps)
+
+        t_emb_all = self.time_proj(timesteps)
+        t_emb_all = t_emb_all.to(dtype=sample_dtype)
+
+        if timestep_cond is not None:
+            timestep_cond_expanded = timestep_cond.unsqueeze(0).expand(num_timesteps, -1, -1)
+            emb_all = self.time_embedding(t_emb_all, timestep_cond_expanded)
+        else:
+            emb_all = self.time_embedding(t_emb_all)
+
+        emb_all = emb_all.unsqueeze(1).expand(-1, batch_size, -1)
+
+        return emb_all
+
     def forward(
-        self,
-        sample: torch.FloatTensor,
-        timestep: Union[torch.Tensor, float, int],
-        encoder_hidden_states: torch.Tensor,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
-        mid_block_additional_residual: Optional[torch.Tensor] = None,
-        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-        if_skip: bool = False,
-        if_faster: bool = False,
-        inputCache: Optional[torch.FloatTensor] = None,
-        inputFasterCache: Optional[torch.FloatTensor] = None,
+            self,
+            sample: torch.FloatTensor,
+            timestep: Union[torch.Tensor, float, int],
+            encoder_hidden_states: torch.Tensor,
+            class_labels: Optional[torch.Tensor] = None,
+            timestep_cond: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+            down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+            mid_block_additional_residual: Optional[torch.Tensor] = None,
+            down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+            encoder_attention_mask: Optional[torch.Tensor] = None,
+            return_dict: bool = True,
+            if_skip: bool = False,
+            if_faster: bool = False,
+            inputCache: Optional[torch.FloatTensor] = None,
+            inputFasterCache: Optional[torch.FloatTensor] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
@@ -934,7 +975,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
-        default_overall_up_factor = 2**self.num_upsamplers
+        default_overall_up_factor = 2 ** self.num_upsamplers
 
         # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
         forward_upsample_size = False
@@ -972,30 +1013,33 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             sample = 2 * sample - 1.0
 
         # 1. time
-        timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+        if soc == "DUO":
+            emb = timestep
+        else:
+            timesteps = timestep
+            if not torch.is_tensor(timesteps):
+                # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+                # This would be a good case for the `match` statement (Python 3.10+)
+                is_mps = sample.device.type == "mps"
+                if isinstance(timestep, float):
+                    dtype = torch.float32 if is_mps else torch.float64
+                else:
+                    dtype = torch.int32 if is_mps else torch.int64
+                timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+            elif len(timesteps.shape) == 0:
+                timesteps = timesteps[None].to(sample.device)
 
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
+            # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+            timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = self.time_proj(timesteps)
+            t_emb = self.time_proj(timesteps)
 
-        # `Timesteps` does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=sample.dtype)
+            # `Timesteps` does not contain any weights and will always return f32 tensors
+            # but time_embedding might actually be running in fp16. so we need to cast here.
+            # there might be better ways to encapsulate this.
+            t_emb = t_emb.to(dtype=sample.dtype)
 
-        emb = self.time_embedding(t_emb, timestep_cond)
+            emb = self.time_embedding(t_emb, timestep_cond)
         aug_emb = None
 
         if self.class_embedding is not None:
@@ -1101,24 +1145,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         sample = self.conv_in(sample)
 
         # 2.5 GLIGEN position net
-        if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
+        if soc != "DUO" and cross_attention_kwargs is not None \
+                and cross_attention_kwargs.get("gligen", None) is not None:
             cross_attention_kwargs = cross_attention_kwargs.copy()
             gligen_args = cross_attention_kwargs.pop("gligen")
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
-        # 3. down
+        # # 3. down
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        if USE_PEFT_BACKEND:
+        if soc != "DUO" and USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
-        # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
+        # # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
         is_adapter = down_intrablock_additional_residuals is not None
         # maintain backward compatibility for legacy usage, where
         #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
         #       but can only use one or the other
-        if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
+        if soc != "DUO" and not is_adapter and mid_block_additional_residual is None \
+                and down_block_additional_residuals is not None:
             deprecate(
                 "T2I should not use down_block_additional_residuals",
                 "1.3.0",
@@ -1131,13 +1177,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             is_adapter = True
 
         down_block_res_samples = (sample,)
+        has_adapter_residuals = is_adapter and len(down_intrablock_additional_residuals) > 0
         if self.enable_unet_cache:
             if not if_skip:
                 for downsample_block in self.down_blocks:
                     if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                         # For t2i-adapter CrossAttnDownBlock2D
                         additional_residuals = {}
-                        if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                        if has_adapter_residuals:
                             additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
                         sample, res_samples = downsample_block(
@@ -1151,7 +1198,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                         )
                     else:
                         sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
-                        if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                        if has_adapter_residuals:
                             sample += down_intrablock_additional_residuals.pop(0)
 
                     down_block_res_samples += res_samples
@@ -1159,14 +1206,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 if if_faster:
                     down_block_res_samples = inputFasterCache.chunk(2, dim=1)
                 else:
-                    down_block_res_samples = (sample,)
+                    # down_block_res_samples = (sample,)
                     for downsample_block in self.down_blocks:
 
                         if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                             # For t2i-adapter CrossAttnDownBlock2D
                             additional_residuals = {}
-                            if is_adapter and len(down_intrablock_additional_residuals) > 0:
-                                additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
+                            if has_adapter_residuals:
+                                additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(
+                                    0)
 
                             sample, res_samples = downsample_block(
                                 hidden_states=sample,
@@ -1180,7 +1228,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                             )
                         else:
                             sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
-                            if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                            if has_adapter_residuals:
                                 sample += down_intrablock_additional_residuals.pop(0)
 
                         down_block_res_samples += res_samples
@@ -1191,7 +1239,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                     # For t2i-adapter CrossAttnDownBlock2D
                     additional_residuals = {}
-                    if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    if has_adapter_residuals:
                         additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
                     sample, res_samples = downsample_block(
@@ -1205,7 +1253,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                     )
                 else:
                     sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
-                    if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    if has_adapter_residuals:
                         sample += down_intrablock_additional_residuals.pop(0)
 
                 down_block_res_samples += res_samples
@@ -1214,7 +1262,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
-                down_block_res_samples, down_block_additional_residuals
+                    down_block_res_samples, down_block_additional_residuals
             ):
                 down_block_res_sample = down_block_res_sample + down_block_additional_residual
                 new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
@@ -1238,11 +1286,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                         sample = self.mid_block(sample, emb)
 
                     # To support T2I-Adapter-XL
-                    if (
-                        is_adapter
-                        and len(down_intrablock_additional_residuals) > 0
-                        and sample.shape == down_intrablock_additional_residuals[0].shape
-                    ):
+                    if has_adapter_residuals and sample.shape == down_intrablock_additional_residuals[0].shape:
                         sample += down_intrablock_additional_residuals.pop(0)
             else:
                 sample = inputCache
@@ -1261,11 +1305,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                     sample = self.mid_block(sample, emb)
 
                 # To support T2I-Adapter-XL
-                if (
-                    is_adapter
-                    and len(down_intrablock_additional_residuals) > 0
-                    and sample.shape == down_intrablock_additional_residuals[0].shape
-                ):
+                if has_adapter_residuals and sample.shape == down_intrablock_additional_residuals[0].shape:
                     sample += down_intrablock_additional_residuals.pop(0)
 
         if is_controlnet:
@@ -1364,7 +1404,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        if USE_PEFT_BACKEND:
+        if soc != "DUO" and USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 

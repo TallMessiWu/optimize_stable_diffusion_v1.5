@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 import torch
 import torch.nn.functional as F
 from torch import nn
+import torch_npu
 
 from diffusers.utils import USE_PEFT_BACKEND
 from diffusers.utils.torch_utils import maybe_allow_in_graph
@@ -299,6 +300,8 @@ class BasicTransformerBlock(nn.Module):
         class_labels: Optional[torch.LongTensor] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.FloatTensor:
+        option = {"jitCompile": "enable"}
+        torch_npu._C._npu_setOption(option)
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
@@ -409,6 +412,8 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
+        option = {"jitCompile": "disable"}
+        torch_npu._C._npu_setOption(option)
         return hidden_states
 
 

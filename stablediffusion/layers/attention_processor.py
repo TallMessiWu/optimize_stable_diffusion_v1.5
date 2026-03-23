@@ -23,8 +23,9 @@ from torch import nn
 from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.models.attention_processor import (
-    CustomDiffusionAttnProcessor, FusedAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0,
-    SpatialNorm,  SlicedAttnProcessor, SlicedAttnAddedKVProcessor, LoRAAttnProcessor, LoRAAttnProcessor2_0, 
+    CustomDiffusionAttnProcessor, FusedAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
+    SpatialNorm, SlicedAttnProcessor, SlicedAttnAddedKVProcessor, LoRAAttnProcessor, LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor, LoRAAttnAddedKVProcessor, IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0,
     CustomDiffusionAttnProcessor, XFormersAttnAddedKVProcessor, XFormersAttnProcessor,
 )
@@ -32,6 +33,7 @@ from diffusers.models.lora import LoRACompatibleLinear, LoRALinearLayer
 from mindiesd import attention_forward
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def get_npu_device():
     # 默认获取当前设备信息
@@ -43,7 +45,9 @@ def get_npu_device():
     else:
         return ""
 
+
 soc = get_npu_device()
+
 
 class Attention(nn.Module):
     r"""
@@ -97,29 +101,29 @@ class Attention(nn.Module):
     """
 
     def __init__(
-        self,
-        query_dim: int,
-        cross_attention_dim: Optional[int] = None,
-        heads: int = 8,
-        dim_head: int = 64,
-        dropout: float = 0.0,
-        bias: bool = False,
-        upcast_attention: bool = False,
-        upcast_softmax: bool = False,
-        cross_attention_norm: Optional[str] = None,
-        cross_attention_norm_num_groups: int = 32,
-        added_kv_proj_dim: Optional[int] = None,
-        norm_num_groups: Optional[int] = None,
-        spatial_norm_dim: Optional[int] = None,
-        out_bias: bool = True,
-        scale_qk: bool = True,
-        only_cross_attention: bool = False,
-        eps: float = 1e-5,
-        rescale_output_factor: float = 1.0,
-        residual_connection: bool = False,
-        _from_deprecated_attn_block: bool = False,
-        processor: Optional["AttnProcessor"] = None,
-        out_dim: int = None,
+            self,
+            query_dim: int,
+            cross_attention_dim: Optional[int] = None,
+            heads: int = 8,
+            dim_head: int = 64,
+            dropout: float = 0.0,
+            bias: bool = False,
+            upcast_attention: bool = False,
+            upcast_softmax: bool = False,
+            cross_attention_norm: Optional[str] = None,
+            cross_attention_norm_num_groups: int = 32,
+            added_kv_proj_dim: Optional[int] = None,
+            norm_num_groups: Optional[int] = None,
+            spatial_norm_dim: Optional[int] = None,
+            out_bias: bool = True,
+            scale_qk: bool = True,
+            only_cross_attention: bool = False,
+            eps: float = 1e-5,
+            rescale_output_factor: float = 1.0,
+            residual_connection: bool = False,
+            _from_deprecated_attn_block: bool = False,
+            processor: Optional["AttnProcessor"] = None,
+            out_dim: int = None,
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
@@ -138,7 +142,7 @@ class Attention(nn.Module):
         self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
-        self.scale = dim_head**-0.5 if self.scale_qk else 1.0
+        self.scale = dim_head ** -0.5 if self.scale_qk else 1.0
 
         self.heads = out_dim // dim_head if out_dim is not None else heads
         # for slice_size > 0 the attention score computation
@@ -222,7 +226,7 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
-        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+            self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ) -> None:
         r"""
         Set whether to use memory efficient attention from `xformers` or not.
@@ -394,9 +398,9 @@ class Attention(nn.Module):
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
         # pop `processor` from `self._modules`
         if (
-            hasattr(self, "processor")
-            and isinstance(self.processor, torch.nn.Module)
-            and not isinstance(processor, torch.nn.Module)
+                hasattr(self, "processor")
+                and isinstance(self.processor, torch.nn.Module)
+                and not isinstance(processor, torch.nn.Module)
         ):
             logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
             self._modules.pop("processor")
@@ -494,11 +498,11 @@ class Attention(nn.Module):
         return lora_processor
 
     def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        **cross_attention_kwargs,
+            self,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            **cross_attention_kwargs,
     ) -> torch.Tensor:
         r"""
         The forward method of the `Attention` class.
@@ -568,7 +572,7 @@ class Attention(nn.Module):
         return tensor
 
     def get_attention_scores(
-        self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor = None
+            self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor = None
     ) -> torch.Tensor:
         r"""
         Compute the attention scores.
@@ -615,7 +619,7 @@ class Attention(nn.Module):
         return attention_probs
 
     def prepare_attention_mask(
-        self, attention_mask: torch.Tensor, target_length: int, batch_size: int, out_dim: int = 3
+            self, attention_mask: torch.Tensor, target_length: int, batch_size: int, out_dim: int = 3
     ) -> torch.Tensor:
         r"""
         Prepare the attention mask for the attention computation.
@@ -723,13 +727,13 @@ class AttnProcessor:
     """
 
     def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+            self,
+            attn: Attention,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            temb: Optional[torch.FloatTensor] = None,
+            scale: float = 1.0,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -793,12 +797,12 @@ class AttnAddedKVProcessor:
     """
 
     def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+            self,
+            attn: Attention,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            scale: float = 1.0,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -863,12 +867,12 @@ class AttnAddedKVProcessor2_0:
             )
 
     def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+            self,
+            attn: Attention,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            scale: float = 1.0,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -941,7 +945,7 @@ class AttnProcessor2_0:
         if soc == "DUO":
             fatik_so_path = os.environ.get("FATIK_FILE_PATH", "")
             if fatik_so_path:
-                try: 
+                try:
                     torch.ops.load_library(fatik_so_path)
                     self.use_fatik = True
                     self.fa_input_layout = "BNSD"
@@ -949,14 +953,15 @@ class AttnProcessor2_0:
                     logger.info(f"Failed to load fatik so file: {fatik_so_path}")
                     logger.info(e)
                     self.use_fatik = False
+
     def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+            self,
+            attn: Attention,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: Optional[torch.FloatTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            temb: Optional[torch.FloatTensor] = None,
+            scale: float = 1.0,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -981,6 +986,8 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        # hidden_states = torch_npu.npu_format_cast(hidden_states, 29)
+
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
 
@@ -989,66 +996,74 @@ class AttnProcessor2_0:
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
+        # encoder_hidden_states = torch_npu.npu_format_cast(encoder_hidden_states, 29)
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        #TODO 序列压缩
+        # TODO 序列压缩
         if self.use_todo:
             q_seqlen = query.shape[-2]
             kv_seqlen = key.shape[-2]
             if q_seqlen == kv_seqlen and q_seqlen == 4096:
-                key, value = map(
-                    lambda t: t.permute(0, 2, 1)
-                    .reshape(batch_size, -1, 64, 64)
-                    .contiguous(),
-                    (key, value))
-                key = torch.nn.functional.interpolate(key, (48, 48), mode='nearest') 
-                value = torch.nn.functional.interpolate(value, (48, 48), mode='nearest') 
-                key, value = map(
-                    lambda t: t.reshape(batch_size, -1, 2304)
-                    .permute(0, 2, 1)
-                    .contiguous(),
-                    (key, value))
+                # key, value = map(
+                #     lambda t: t.permute(0, 2, 1)
+                #     .reshape(batch_size, -1, 64, 64)
+                #     .contiguous(),
+                #     (key, value))
+                key = key.permute(0, 2, 1).reshape(batch_size, -1, 64, 64).contiguous()
+                value = value.permute(0, 2, 1).reshape(batch_size, -1, 64, 64).contiguous()
+                key = torch.nn.functional.interpolate(key, (48, 48), mode='nearest')
+                value = torch.nn.functional.interpolate(value, (48, 48), mode='nearest')
+                # key, value = map(
+                #     lambda t: t.reshape(batch_size, -1, 2304)
+                #     .permute(0, 2, 1)
+                #     .contiguous(),
+                #     (key, value))
+                key = key.reshape(batch_size, -1, 2304).permute(0, 2, 1).contiguous()
+                value = value.reshape(batch_size, -1, 2304).permute(0, 2, 1).contiguous()
 
         if self.fa_input_layout == "BNSD":
-            query, key, value = map(
-                    lambda t: t.view(batch_size, -1, attn.heads, head_dim)
-                    .transpose(1, 2),
-                    (query, key, value))
-            
+            # query, key, value = map(
+            #         lambda t: t.view(batch_size, -1, attn.heads, head_dim)
+            #         .transpose(1, 2),
+            #         (query, key, value))
+            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
         if soc == "A2":
             hidden_states = torch_npu.npu_fusion_attention(
-                query, key, value, 
-                atten_mask=attention_mask, 
+                query, key, value,
+                atten_mask=attention_mask,
                 input_layout=self.fa_input_layout,
-                scale=head_dim**-0.5,
+                scale=head_dim ** -0.5,
                 head_num=attn.heads,
             )[0]
         else:
             if self.use_fatik:
                 try:
-                    option = {"jitCompile": "enable"}
-                    torch_npu._C._npu_setOption(option)
-                    query = query * (head_dim**-0.5)
+                    # option = {"jitCompile": "enable"}
+                    # torch_npu._C._npu_setOption(option)
+                    query = query * (head_dim ** -0.5)
                     hidden_states = torch.ops.mindiefatik.flash_attention_tik(query, key, value)
-                    option = {"jitCompile": "disable"}
-                    torch_npu._C._npu_setOption(option)
-                    
+                    # option = {"jitCompile": "disable"}
+                    # torch_npu._C._npu_setOption(option)
+
                 except Exception as e:
                     logger.info(f"Failed to use fatik: {e}")
                     self.use_fatik = False
                     hidden_states = torch_npu.npu_prompt_flash_attention(
                         query, key, value, atten_mask=attention_mask,
-                        input_layout=self.fa_input_layout, scale_value=head_dim**-0.5,
+                        input_layout=self.fa_input_layout, scale_value=head_dim ** -0.5,
                         pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
 
             else:
                 hidden_states = torch_npu.npu_prompt_flash_attention(
                     query, key, value, atten_mask=attention_mask,
-                    input_layout=self.fa_input_layout, scale_value=head_dim**-0.5,
+                    input_layout=self.fa_input_layout, scale_value=head_dim ** -0.5,
                     pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
 
         # hidden_states = F.scaled_dot_product_attention(
@@ -1074,7 +1089,6 @@ class AttnProcessor2_0:
         if attn.rescale_output_factor != 1.0:
             hidden_states = hidden_states / attn.rescale_output_factor
         return hidden_states
-
 
 
 ADDED_KV_ATTENTION_PROCESSORS = (

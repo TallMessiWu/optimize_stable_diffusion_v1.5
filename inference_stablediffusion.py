@@ -238,9 +238,12 @@ def main():
         config = torchair.CompilerConfig()
         # config.mode = "reduce-overhead"
         npu_backend = torchair.get_npu_backend(compiler_config=config)
-        pipe.unet = torch.compile(pipe.unet, backend=npu_backend)
+        torch._dynamo.config.capture_scalar_outputs = True
+        if soc != "DUO":
+            pipe.unet = torch.compile(pipe.unet, backend=npu_backend)
         pipe.text_encoder = torch.compile(pipe.text_encoder, backend=npu_backend)
         pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend=npu_backend)
+        pipe.safety_checker = torch.compile(pipe.safety_checker, backend=npu_backend)
 
     if soc == "DUO":
         model_list = [pipe.unet, pipe.text_encoder, pipe.vae.decoder]
