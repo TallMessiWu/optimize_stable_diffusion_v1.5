@@ -1058,13 +1058,13 @@ class AttnProcessor2_0:
                     hidden_states = torch_npu.npu_prompt_flash_attention(
                         query, key, value, atten_mask=attention_mask,
                         input_layout=self.fa_input_layout, scale_value=head_dim ** -0.5,
-                        pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
+                        pre_tokens=2147483647, next_tokens=2147483647, num_heads=attn.heads)
 
             else:
                 hidden_states = torch_npu.npu_prompt_flash_attention(
                     query, key, value, atten_mask=attention_mask,
                     input_layout=self.fa_input_layout, scale_value=head_dim ** -0.5,
-                    pre_tokens=65535, next_tokens=65535, num_heads=attn.heads)
+                    pre_tokens=2147483647, next_tokens=2147483647, num_heads=attn.heads)
 
         # hidden_states = F.scaled_dot_product_attention(
         #     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
