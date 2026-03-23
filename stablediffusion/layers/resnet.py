@@ -4,6 +4,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch_npu
 
 from diffusers.utils import USE_PEFT_BACKEND
 from diffusers.models.resnet import (
@@ -12,6 +13,19 @@ from diffusers.models.resnet import (
 )
 
 from .activations import get_activation
+
+
+def _npu_group_norm_silu(hidden_states, norm):
+    """GroupNorm + SiLU 融合调用，避免 NC1HWC0 与 NCHW 间冗余 TransData。"""
+    return torch_npu.npu_silu(
+        torch_npu.npu_group_norm(
+            hidden_states,
+            norm.num_groups,
+            norm.weight,
+            norm.bias,
+            norm.eps,
+        )[0]
+    )
 
 class ResnetBlock2D(nn.Module):
     r"""
@@ -155,8 +169,7 @@ class ResnetBlock2D(nn.Module):
     ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
-        hidden_states = self.norm1(hidden_states)
-        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = _npu_group_norm_silu(hidden_states, self.norm1)
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -199,7 +212,7 @@ class ResnetBlock2D(nn.Module):
         if self.time_embedding_norm == "default":
             if temb is not None:
                 hidden_states = hidden_states + temb
-            hidden_states = self.norm2(hidden_states)
+            hidden_states = _npu_group_norm_silu(hidden_states, self.norm2)
         elif self.time_embedding_norm == "scale_shift":
             if temb is None:
                 raise ValueError(
@@ -208,10 +221,9 @@ class ResnetBlock2D(nn.Module):
             time_scale, time_shift = torch.chunk(temb, 2, dim=1)
             hidden_states = self.norm2(hidden_states)
             hidden_states = hidden_states * (1 + time_scale) + time_shift
+            hidden_states = self.nonlinearity(hidden_states)
         else:
-            hidden_states = self.norm2(hidden_states)
-
-        hidden_states = self.nonlinearity(hidden_states)
+            hidden_states = _npu_group_norm_silu(hidden_states, self.norm2)
 
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
