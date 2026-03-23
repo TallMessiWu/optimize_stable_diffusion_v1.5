@@ -87,9 +87,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
-
-        self.proj = linear_cls(dim_in, dim_out * 2, bias=bias)
+        self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
@@ -98,8 +96,7 @@ class GEGLU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
+        hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 
